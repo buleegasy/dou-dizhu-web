@@ -15,14 +15,15 @@ export const evaluateHandPower = (cards: Card[]): number => {
     });
 
     Object.values(weights).forEach(count => {
-        if (count === 4) score += 6; // 有炸弹加分
+        if (count === 4) score += 6; // 有炸弹加大量分
+        if (count === 3) score += 2; // 有三张加分（利于带牌或变飞机）
     });
 
     return score;
 };
 
 export const decideBid = (cards: Card[]): boolean => {
-    return evaluateHandPower(cards) >= 8;
+    return evaluateHandPower(cards) >= 5;
 };
 
 // 提取所有可能的同一牌型组合
