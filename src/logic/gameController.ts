@@ -96,6 +96,24 @@ export const setLandlord = (state: GameState, index: number): GameState => {
   };
 };
 
+export const passBid = (state: GameState, index: number): GameState => {
+  const newBidAttempts = { ...state.bidAttempts, [index]: false };
+  const nextTurn = (index + 1) % 3;
+  
+  // 如果三个人都点过“不叫”
+  if (Object.keys(newBidAttempts).length >= 3) {
+      // 简单处理：重新发牌
+      return dealCards(initGameState());
+  }
+
+  return {
+    ...state,
+    bidAttempts: newBidAttempts,
+    turnIndex: nextTurn,
+    lastActionTimestamp: Date.now(),
+  };
+};
+
 export const playCards = (state: GameState, playerIndex: number, selectedCards: Card[]): { state: GameState; error?: string } => {
   const currentHand = analyzeHand(selectedCards);
   

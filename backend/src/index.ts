@@ -1,4 +1,4 @@
-import { GameState, initGameState, dealCards, setLandlord, playCards, passTurn, GameStage } from './logic/gameController.js';
+import { GameState, initGameState, dealCards, setLandlord, playCards, passTurn, passBid, GameStage } from './logic/gameController.js';
 import { decidePlay, decideBid } from './logic/aiController.js';
 
 export interface Env {
@@ -166,6 +166,9 @@ export class GameRoom {
       case 'landlord':
         newState = setLandlord(newState, action.index);
         break;
+      case 'pass_bid':
+        newState = passBid(newState, playerId);
+        break;
       case 'play':
         const result = playCards(newState, playerId, action.cards);
         if (!result.error) newState = result.state;
@@ -209,7 +212,7 @@ export class GameRoom {
     const state = this.gameState;
     if (state.stage === GameStage.Bidding) {
         // 超时自动不叫
-        await this.handleAction({ type: 'pass_bid' }, state.turnIndex); // 假设我们扩充了逻辑
+        await this.handleAction({ type: 'pass_bid' }, state.turnIndex);
     } else if (state.stage === GameStage.Playing) {
         // 超时自动 Pass 或出最小
         const decision = decidePlay(state, state.turnIndex);
@@ -232,16 +235,7 @@ export class GameRoom {
             if (want) {
                 await this.handleAction({ type: 'landlord', index: currentPlayer.id }, currentPlayer.id);
             } else {
-                // 暂时模拟 Pass Bid
-                this.gameState.turnIndex = (this.gameState.turnIndex + 1) % 3;
-                if (this.gameState.turnIndex === 0) { 
-                    // 如果一圈没人叫，强制流转或流局，这里简单点给第一个叫的人
-                    this.gameState = setLandlord(this.gameState, 0); 
-                }
-                this.gameState.lastActionTimestamp = Date.now();
-                await this.state.storage.put('gameState', this.gameState);
-                this.broadcastState();
-                this.checkAndTriggerAI();
+                await this.handleAction({ type: 'pass_bid' }, currentPlayer.id);
             }
         } else if (state.stage === GameStage.Playing) {
             const decision = decidePlay(this.gameState, currentPlayer.id);

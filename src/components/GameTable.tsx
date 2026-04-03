@@ -90,6 +90,10 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
     syncRef.current?.sendAction({ type: 'landlord', index: playerId });
   };
 
+  const handlePassBid = () => {
+    syncRef.current?.sendAction({ type: 'pass_bid' });
+  };
+
   const handlePlay = () => {
     if (!playabilityStatus.canPlay || playerId === null) return;
 
@@ -261,12 +265,20 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
         <div className="flex justify-center space-x-3 w-full">
             {state.stage === GameStage.Bidding && state.turnIndex === playerId && (
-                <button 
-                    onClick={handleGrabLandlord}
-                    className="px-10 py-3.5 bg-yellow-400 text-white rounded-2xl font-black shadow-lg shadow-yellow-100 hover:bg-yellow-500 hover:shadow-yellow-200 transition-all uppercase tracking-tight text-sm"
-                >
-                    叫地主
-                </button>
+                <>
+                    <button 
+                        onClick={handlePassBid}
+                        className="px-10 py-3.5 bg-white border border-gray-100 text-gray-400 rounded-2xl font-bold shadow-sm hover:bg-gray-50 transition-all uppercase tracking-tight text-sm"
+                    >
+                        不叫
+                    </button>
+                    <button 
+                        onClick={handleGrabLandlord}
+                        className="px-10 py-3.5 bg-yellow-400 text-white rounded-2xl font-black shadow-lg shadow-yellow-100 hover:bg-yellow-500 hover:shadow-yellow-200 transition-all uppercase tracking-tight text-sm"
+                    >
+                        叫地主
+                    </button>
+                </>
             )}
             {state.stage === GameStage.Playing && isMyTurn && (
                 <>
