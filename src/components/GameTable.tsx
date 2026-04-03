@@ -22,6 +22,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(25);
+  const timerStartRef = useRef<number>(Date.now());
   
   const syncRef = useRef<GameSync | null>(null);
 
@@ -41,17 +42,20 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
     };
   }, [roomId]);
 
-  // 倒计时逻辑
+  // 倒计时逻辑：回合切换时重置，用本地时钟倒数（不依赖服务器时间戳）
+  useEffect(() => {
+    timerStartRef.current = Date.now();
+    setTimeLeft(25);
+  }, [state.turnIndex, state.stage]);
+
   useEffect(() => {
     const timer = setInterval(() => {
-        if (state.lastActionTimestamp) {
-            const elapsed = Math.floor((Date.now() - state.lastActionTimestamp) / 1000);
-            const remaining = Math.max(0, 25 - elapsed);
-            setTimeLeft(remaining);
-        }
-    }, 1000);
+        const elapsed = Math.floor((Date.now() - timerStartRef.current) / 1000);
+        const remaining = Math.max(0, 25 - elapsed);
+        setTimeLeft(remaining);
+    }, 500); // 每 500ms 刷新一次，更平滑
     return () => clearInterval(timer);
-  }, [state.lastActionTimestamp]);
+  }, []); // 只挂载一次，依赖 ref 避免闭包陷阱
 
   // 实时分析当前选中的牌
   const selectedHandDetail = useMemo(() => {
