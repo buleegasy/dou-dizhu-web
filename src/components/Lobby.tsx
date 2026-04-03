@@ -1,18 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Play, Hash } from 'lucide-react';
+import { Users, Plus, Play, Hash, RefreshCcw } from 'lucide-react';
 
 interface LobbyProps {
   onJoinRoom: (roomId: string) => void;
-  activeRooms: string[];
 }
 
-const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, activeRooms }) => {
+const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
   const [roomIdInput, setRoomIdInput] = useState('');
+  const [activeRooms, setActiveRooms] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchRooms = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('https://dou-dizhu-backend.buleegasy-6c8.workers.dev/api/rooms');
+      const data = await response.json();
+      setActiveRooms(data);
+    } catch (e) {
+      console.error('Failed to fetch rooms:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRooms();
+    const timer = setInterval(fetchRooms, 5000); // 每 5 秒刷新一次
+    return () => clearInterval(timer);
+  }, []);
 
   const handleJoin = (id: string) => {
     if (id.trim()) {
-      onJoinRoom(id.trim());
+      onJoinRoom(id.trim().toUpperCase());
     }
   };
 
@@ -23,11 +43,19 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, activeRooms }) => {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-gray-100 p-8"
       >
-        <div className="flex items-center space-x-3 mb-8">
-          <div className="bg-purple-100 p-3 rounded-2xl">
-            <Play className="text-purple-600 fill-purple-600" size={24} />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-3">
+            <div className="bg-purple-100 p-3 rounded-2xl">
+              <Play className="text-purple-600 fill-purple-600" size={24} />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">斗地主大厅</h1>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">斗地主大厅</h1>
+          <button 
+            onClick={fetchRooms}
+            className={`p-2 text-gray-400 hover:text-purple-600 transition-colors ${loading ? 'animate-spin' : ''}`}
+          >
+            <RefreshCcw size={18} />
+          </button>
         </div>
 
         {/* 手动输入房间号 */}
@@ -41,7 +69,8 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, activeRooms }) => {
                 placeholder="输入房间 ID"
                 value={roomIdInput}
                 onChange={(e) => setRoomIdInput(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-purple-200 transition-all text-gray-700 font-medium placeholder:text-gray-300"
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin(roomIdInput)}
+                className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-purple-200 transition-all text-gray-700 font-medium placeholder:text-gray-300 uppercase"
               />
             </div>
             <button 
@@ -97,7 +126,7 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, activeRooms }) => {
                       </div>
                       <div>
                         <div className="text-sm font-bold text-gray-700 group-hover:text-purple-700 font-mono uppercase tracking-wider">{id}</div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-tighter">Waiting for players...</div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-tighter">Active Room</div>
                       </div>
                     </div>
                     <div className="bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">

@@ -1,15 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Info, Users } from 'lucide-react';
 import type { GameState } from '../logic/gameController';
 import { 
   initGameState, 
-  dealCards, 
-  setLandlord, 
-  playCards, 
-  passTurn,
   GameStage
 } from '../logic/gameController';
+import { GameSync } from '../logic/gameSync';
 import Hand from './Hand';
 import Card from './Card';
 
@@ -20,52 +17,59 @@ interface GameTableProps {
 
 const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   const [state, setState] = useState<GameState>(initGameState());
+  const [playerId, setPlayerId] = useState<number | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  const syncRef = useRef<GameSync | null>(null);
 
-  // 初始化发牌
+  useEffect(() => {
+    // 初始化同步器
+    syncRef.current = new GameSync(
+      (newState, pId) => {
+        setState(newState);
+        if (pId !== undefined) setPlayerId(pId);
+      },
+      (msg) => setError(msg)
+    );
+
+    syncRef.current.connect(roomId);
+
+    return () => {
+      syncRef.current?.disconnect();
+    };
+  }, [roomId]);
+
   const handleStart = () => {
-    const newState = dealCards(initGameState());
-    setState(newState);
+    syncRef.current?.sendAction({ type: 'deal' });
     setError(null);
   };
 
-  // 抢地主 (简单逻辑：直接让0号抢)
   const handleGrabLandlord = () => {
-    setState(setLandlord(state, 0));
+    syncRef.current?.sendAction({ type: 'landlord', index: playerId });
   };
 
-  // 出牌
   const handlePlay = () => {
-    const player = state.players[state.turnIndex];
-    if (player.id !== 0) return; // 仅支持玩家(0号位)操作
+    if (playerId === null || state.turnIndex !== playerId) return;
 
+    const player = state.players[playerId];
     const selectedCards = selectedIndices.map(i => player.cards[i]);
-    const { state: newState, error: playError } = playCards(state, 0, selectedCards);
     
-    if (playError) {
-      setError(playError);
-      return;
-    }
-
-    setState(newState);
+    syncRef.current?.sendAction({ type: 'play', cards: selectedCards });
     setSelectedIndices([]);
     setError(null);
   };
 
-  // 跳过
   const handlePass = () => {
-    const { state: newState, error: passError } = passTurn(state, 0);
-    if (passError) {
-      setError(passError);
-      return;
-    }
-    setState(newState);
+    if (playerId === null || state.turnIndex !== playerId) return;
+    
+    syncRef.current?.sendAction({ type: 'pass' });
     setSelectedIndices([]);
     setError(null);
   };
 
-  const currentPlayer = state.players[0];
+  const currentPlayer = playerId !== null ? state.players[playerId] : state.players[0];
+  const isMyTurn = playerId !== null && state.turnIndex === playerId;
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50 p-4 md:p-8">
@@ -79,7 +83,9 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
             <ChevronLeft size={20} />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">测试房间</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">
+              {playerId !== null ? `玩家 ${playerId + 1} 的视角` : '连接中...'}
+            </h1>
             <div className="flex items-center text-[10px] font-mono font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
               ID: {roomId}
             </div>
@@ -93,12 +99,14 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
                     {state.stage}
                 </div>
             </div>
-            <button 
-                onClick={handleStart}
-                className="px-6 py-2.5 bg-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-200 hover:bg-purple-700 active:scale-95 transition-all"
-            >
-                {state.stage === GameStage.Idle ? '开始游戏' : '重新洗牌'}
-            </button>
+            {state.stage === GameStage.Idle && (
+                <button 
+                    onClick={handleStart}
+                    className="px-6 py-2.5 bg-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-200 hover:bg-purple-700 active:scale-95 transition-all"
+                >
+                    开始游戏
+                </button>
+            )}
         </div>
       </div>
 
@@ -109,8 +117,12 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
             <Users size={20} />
           </div>
           <div>
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">对手 1 (左)</div>
-            <div className="text-xl font-black text-gray-900">{state.players[1]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span></div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
+                玩家 {(playerId! + 1) % 3 + 1} (左)
+            </div>
+            <div className="text-xl font-black text-gray-900">
+                {state.players[(playerId! + 1) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
+            </div>
           </div>
         </div>
 
@@ -129,8 +141,12 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
         <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4 justify-end">
           <div className="text-right">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">对手 2 (右)</div>
-            <div className="text-xl font-black text-gray-900">{state.players[2]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span></div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
+                玩家 {(playerId! + 2) % 3 + 1} (右)
+            </div>
+            <div className="text-xl font-black text-gray-900">
+                {state.players[(playerId! + 2) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
+            </div>
           </div>
           <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300">
             <Users size={20} />
@@ -144,7 +160,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
             <div className="flex flex-col items-center">
                 <div className="flex items-center text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-4 bg-purple-50/50 px-3 py-1 rounded-full border border-purple-100/50">
                     <Info size={10} className="mr-1.5" />
-                    Player {state.lastHand.playerIndex === 0 ? 'You' : state.lastHand.playerIndex + 1} Played
+                    Player {state.lastHand.playerIndex === playerId ? 'You' : state.lastHand.playerIndex + 1} Played
                 </div>
                 <div className="flex space-x-[-20px]">
                     <AnimatePresence>
@@ -153,7 +169,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
                 </div>
             </div>
         )}
-        {state.passCount > 0 && state.turnIndex !== 0 && (
+        {state.passCount > 0 && state.turnIndex !== playerId && (
             <div className="text-2xl font-black text-gray-200 uppercase tracking-tighter select-none">Passed</div>
         )}
         
@@ -166,7 +182,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
       {/* 控制操作台 */}
       <div className="flex justify-center space-x-3 mb-6">
-        {state.stage === GameStage.Bidding && (
+        {state.stage === GameStage.Bidding && state.turnIndex === playerId && (
             <button 
                 onClick={handleGrabLandlord}
                 className="px-10 py-3.5 bg-yellow-400 text-white rounded-2xl font-black shadow-lg shadow-yellow-100 hover:bg-yellow-500 hover:shadow-yellow-200 transition-all uppercase tracking-tight text-sm"
@@ -174,7 +190,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
                 叫地主
             </button>
         )}
-        {state.stage === GameStage.Playing && state.turnIndex === 0 && (
+        {state.stage === GameStage.Playing && isMyTurn && (
             <>
                 <button 
                     onClick={handlePass}

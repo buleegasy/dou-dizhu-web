@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
 import GameTable from './components/GameTable'
 import Lobby from './components/Lobby'
 import './index.css'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useState } from 'react'
 
 function App() {
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);

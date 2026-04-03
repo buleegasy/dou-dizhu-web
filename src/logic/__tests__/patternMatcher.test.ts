@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { analyzeHand, compareHands, HandType } from '../patternMatcher';
-import { Rank, Suit, Card } from '../cardUtils';
+import { Rank, Suit, type Card } from '../cardUtils';
 
 const createCard = (rank: Rank, suit: Suit = Suit.Spade): Card => {
   const weightMap: Record<Rank, number> = {
