@@ -32,6 +32,8 @@ export interface GameState {
   } | null;
   passCount: number;
   bidAttempts?: Record<number, boolean>;
+  lastActionTimestamp?: number;
+  history?: any[]; // 记录对局动作日志
 }
 
 export const initGameState = (): GameState => {
@@ -44,6 +46,8 @@ export const initGameState = (): GameState => {
     lastHand: null,
     passCount: 0,
     bidAttempts: {},
+    lastActionTimestamp: Date.now(),
+    history: [],
   };
 };
 

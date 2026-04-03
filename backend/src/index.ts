@@ -1,4 +1,4 @@
-import { GameState, initGameState, dealCards, setLandlord, playCards, passTurn } from './logic/gameController.js';
+import { GameState, initGameState, dealCards, setLandlord, playCards, passTurn, GameStage } from './logic/gameController.js';
 import { decidePlay, decideBid } from './logic/aiController.js';
 
 export interface Env {
@@ -19,11 +19,18 @@ export default {
       return obj.fetch(request);
     }
 
-    // 进入具体房间 (WebSocket)
+    // 进入具体房间 (WebSocket 或 Replay)
     if (path.startsWith('/api/room/')) {
-      const roomId = path.split('/')[3];
+      const parts = path.split('/');
+      const roomId = parts[3];
+      const subAction = parts[4]; // 'replay'
+
       const id = env.GAME_ROOM.idFromName(roomId);
       const obj = env.GAME_ROOM.get(id);
+
+      if (subAction === 'replay') {
+          return obj.fetch(request);
+      }
 
       // 注册房间到大厅
       const registryId = env.ROOM_REGISTRY.idFromName('global-registry');
@@ -54,7 +61,7 @@ export class RoomRegistry {
     const url = new URL(request.url);
     if (url.pathname === '/api/rooms') {
       return new Response(JSON.stringify(Array.from(this.activeRooms)), {
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' }
       });
     }
     if (url.pathname === '/add') {
@@ -74,6 +81,9 @@ export class GameRoom {
   state: DurableObjectState;
   gameState: GameState = initGameState();
   sessions: Set<{ ws: WebSocket; playerId: number }> = new Set();
+  
+  readonly TIMEOUT_MS = 25000; // 25秒倒计时
+  readonly CLEANUP_MS = 1000 * 60 * 5; // 5分钟无活跃自动关闭
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -84,6 +94,13 @@ export class GameRoom {
   }
 
   async fetch(request: Request) {
+    const url = new URL(request.url);
+    if (url.pathname.endsWith('/replay')) {
+        return new Response(JSON.stringify(this.gameState.history || []), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+    }
+
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
@@ -91,8 +108,13 @@ export class GameRoom {
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    const playerId = this.sessions.size; // 简单分配：0, 1, 2
     
+    // 简单分配 playerId: 检查当前 session 中哪些没被占用
+    const occupiedIds = Array.from(this.sessions).map(s => s.playerId);
+    let playerId = 0;
+    while (occupiedIds.includes(playerId)) playerId++;
+    if (playerId >= 3) return new Response('Room Full', { status: 403 });
+
     await this.handleSession(server, playerId);
 
     return new Response(null, { status: 101, webSocket: client });
@@ -109,111 +131,131 @@ export class GameRoom {
     ws.addEventListener('message', async (event) => {
       try {
         const data = JSON.parse(event.data as string);
-        this.handleAction(data, playerId);
+        await this.handleAction(data, playerId);
       } catch (e) {
         console.error('Action error:', e);
       }
     });
 
-    ws.addEventListener('close', () => {
+    ws.addEventListener('close', async () => {
       this.sessions.delete(session);
+      // 如果房间没人了，启动清理倒计时
+      if (this.sessions.size === 0) {
+          await this.state.storage.setAlarm(Date.now() + this.CLEANUP_MS);
+      }
     });
   }
 
   async handleAction(action: any, playerId: number) {
-    // 这里执行 gameController 的逻辑
-    let newState = this.gameState;
+    let newState = { ...this.gameState };
     
+    // 记录日志
+    if (!newState.history) newState.history = [];
+    newState.history.push({ ...action, playerId, timestamp: Date.now() });
+
     switch (action.type) {
       case 'deal':
-        newState = dealCards(this.gameState);
+        newState = dealCards(newState);
         break;
       case 'add_ai':
         const seat = action.index;
-        const newPlayers = [...this.gameState.players];
+        const newPlayers = [...newState.players];
         newPlayers[seat] = { ...newPlayers[seat], isAi: true };
-        newState = { ...this.gameState, players: newPlayers };
+        newState = { ...newState, players: newPlayers };
         break;
       case 'landlord':
-        newState = setLandlord(this.gameState, action.index);
+        newState = setLandlord(newState, action.index);
         break;
       case 'play':
-        const result = playCards(this.gameState, playerId, action.cards);
+        const result = playCards(newState, playerId, action.cards);
         if (!result.error) newState = result.state;
         break;
       case 'pass':
-        const passResult = passTurn(this.gameState, playerId);
+        const passResult = passTurn(newState, playerId);
         if (!passResult.error) newState = passResult.state;
         break;
     }
 
+    newState.lastActionTimestamp = Date.now();
     this.gameState = newState;
     await this.state.storage.put('gameState', this.gameState);
+    
     this.broadcastState();
 
-    // 检查是否轮到 AI 出牌
+    // 更新倒计时 Alarm
+    if (this.gameState.stage === GameStage.Bidding || this.gameState.stage === GameStage.Playing) {
+        await this.state.storage.setAlarm(Date.now() + this.TIMEOUT_MS);
+    } else {
+        // 其他阶段如果不空则不需要 Alarm，除非没人了
+        if (this.sessions.size === 0) {
+            await this.state.storage.setAlarm(Date.now() + this.CLEANUP_MS);
+        } else {
+            await this.state.storage.deleteAlarm();
+        }
+    }
+
+    // 触发下一次 AI
     this.checkAndTriggerAI();
+  }
+
+  // 服务器端超时自动操作
+  async onAlarm() {
+    if (this.sessions.size === 0) {
+        // 全部玩家离开超过 5 分钟，销毁存储
+        await this.state.storage.deleteAll();
+        return;
+    }
+
+    const state = this.gameState;
+    if (state.stage === GameStage.Bidding) {
+        // 超时自动不叫
+        await this.handleAction({ type: 'pass_bid' }, state.turnIndex); // 假设我们扩充了逻辑
+    } else if (state.stage === GameStage.Playing) {
+        // 超时自动 Pass 或出最小
+        const decision = decidePlay(state, state.turnIndex);
+        await this.handleAction({ type: decision.action === 'play' ? 'play' : 'pass', cards: decision.cards }, state.turnIndex);
+    }
   }
 
   checkAndTriggerAI() {
     const state = this.gameState;
-    
     const currentPlayer = state.players[state.turnIndex];
     if (!currentPlayer || !currentPlayer.isAi) return;
 
-    // 如果是叫地主阶段
-    if (state.stage === 'Bidding') {
-        setTimeout(async () => {
-             if (this.gameState.turnIndex !== currentPlayer.id || this.gameState.stage !== 'Bidding') return;
-             
-             const wantBid = decideBid(currentPlayer.cards);
-             if (wantBid) {
-                 this.gameState = setLandlord(this.gameState, currentPlayer.id);
-             } else {
-                 this.gameState.turnIndex = (this.gameState.turnIndex + 1) % 3;
-                 // 如果一圈都没人叫，为了防止死循环，这里可以简单地强制最后一个人当或者重新发牌。
-                 // 作为简化体验，AI 不叫也会移交给下家。如果下家还是 AI 会继续流转。
-             }
-             
-             await this.state.storage.put('gameState', this.gameState);
-             this.broadcastState();
-             this.checkAndTriggerAI();
-        }, 1500);
-        return;
-    }
-
-    // 只有在 Playing 状态才处理出牌
-    if (state.stage !== 'Playing') return;
-
-    // 使用 setTimeout 模拟思考延迟
+    // AI 决策逻辑
     setTimeout(async () => {
-             // 再次确保状态没变
-             if (this.gameState.turnIndex !== currentPlayer.id || this.gameState.stage !== 'Playing') return;
-             
-             const decision = decidePlay(this.gameState, currentPlayer.id);
-             let afterAiState = this.gameState;
+        // 关键：由于是在 setTimeout 中，必须重新从持久化或内存读取最新的 turnIndex 保证没变
+        if (this.gameState.turnIndex !== currentPlayer.id) return;
 
-             if (decision.action === 'play' && decision.cards) {
-                const aiResult = playCards(this.gameState, currentPlayer.id, decision.cards);
-                if (!aiResult.error) afterAiState = aiResult.state;
-             } else {
-                const aiPassResult = passTurn(this.gameState, currentPlayer.id);
-                if (!aiPassResult.error) afterAiState = aiPassResult.state;
-             }
-             
-             this.gameState = afterAiState;
-             await this.state.storage.put('gameState', this.gameState);
-             this.broadcastState();
-             
-             // 递归检查下一个是否还是 AI
-             this.checkAndTriggerAI();
-        }, 2000); // 2 秒人工智能延迟
+        if (state.stage === GameStage.Bidding) {
+            const want = decideBid(currentPlayer.cards);
+            if (want) {
+                await this.handleAction({ type: 'landlord', index: currentPlayer.id }, currentPlayer.id);
+            } else {
+                // 暂时模拟 Pass Bid
+                this.gameState.turnIndex = (this.gameState.turnIndex + 1) % 3;
+                if (this.gameState.turnIndex === 0) { 
+                    // 如果一圈没人叫，强制流转或流局，这里简单点给第一个叫的人
+                    this.gameState = setLandlord(this.gameState, 0); 
+                }
+                this.gameState.lastActionTimestamp = Date.now();
+                await this.state.storage.put('gameState', this.gameState);
+                this.broadcastState();
+                this.checkAndTriggerAI();
+            }
+        } else if (state.stage === GameStage.Playing) {
+            const decision = decidePlay(this.gameState, currentPlayer.id);
+            await this.handleAction({ type: decision.action === 'play' ? 'play' : 'pass', cards: decision.cards }, currentPlayer.id);
+        }
+    }, 1200); // AI 思考时间
   }
 
   broadcastState() {
     const payload = JSON.stringify({ type: 'update', state: this.gameState });
     for (const session of this.sessions) {
-      session.ws.send(payload);
+      try {
+          session.ws.send(payload);
+      } catch (e) {}
     }
   }
 }

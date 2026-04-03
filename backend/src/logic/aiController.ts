@@ -1,6 +1,6 @@
 import type { Card } from './cardUtils';
 import type { GameState } from './gameController';
-import { analyzeHand, compareHands, HandType, type Hand } from './patternMatcher';
+import { HandType } from './patternMatcher';
 
 // 评估手牌价值，决定是否叫地主
 export const evaluateHandPower = (cards: Card[]): number => {
@@ -22,102 +22,137 @@ export const evaluateHandPower = (cards: Card[]): number => {
 };
 
 export const decideBid = (cards: Card[]): boolean => {
-    // 得分高于 8 分则叫地主
     return evaluateHandPower(cards) >= 8;
 };
 
-// 提取所有可能的同一牌型组合（简易版：提取单、双、三、四）
+// 提取所有可能的同一牌型组合
 const findSets = (cards: Card[], size: number): Card[][] => {
-    const weights: Record<number, Card[]> = {};
+    const groups: Record<number, Card[]> = {};
     cards.forEach(c => {
-        if (!weights[c.weight]) weights[c.weight] = [];
-        weights[c.weight].push(c);
+        if (!groups[c.weight]) groups[c.weight] = [];
+        groups[c.weight].push(c);
     });
-
     const sets: Card[][] = [];
-    Object.values(weights).forEach(group => {
-        if (group.length >= size) {
-            sets.push(group.slice(0, size));
-        }
+    Object.values(groups).forEach(group => {
+        if (group.length >= size) sets.push(group.slice(0, size));
     });
     return sets.sort((a, b) => a[0].weight - b[0].weight);
 };
 
-// 决定出牌（启发式简化版）
-export const decidePlay = (state: GameState, playerId: number): { action: 'play' | 'pass', cards?: Card[] } => {
-    const player = state.players[playerId];
-    const cards = [...player.cards].sort((a, b) => a.weight - b.weight); // 从小到大
-
-    // 1. 首发出牌：挑最小的组合打出去
-    if (!state.lastHand || state.passCount >= 2) {
-        // 启发式：如果手里有最小的飞机或顺子（目前暂用简单逻辑：先出连对，再出顺子，再对子，再单张）
-        const pairs = findSets(cards, 2);
-        if (pairs.length > 0 && pairs[0][0].weight < 12) {
-            return { action: 'play', cards: pairs[0] };
+// 找出最长连续顺子 (5张+, 不含 2 和王)
+const findStraight = (cards: Card[]): Card[] | null => {
+    const singles = cards.filter(c => c.weight < 15);
+    const weights = [...new Set(singles.map(c => c.weight))].sort((a, b) => a - b);
+    let best: number[] = [];
+    let cur: number[] = [weights[0]];
+    for (let i = 1; i < weights.length; i++) {
+        if (weights[i] === weights[i - 1] + 1) cur.push(weights[i]);
+        else {
+            if (cur.length >= 5 && cur.length > best.length) best = cur;
+            cur = [weights[i]];
         }
+    }
+    if (cur.length >= 5 && cur.length > best.length) best = cur;
+    if (best.length < 5) return null;
+    const result: Card[] = [];
+    best.forEach(w => {
+        const c = cards.find(card => card.weight === w);
+        if (c) result.push(c);
+    });
+    return result;
+};
+
+// ====================================================================
+// 核心决策函数：决定出牌
+// ====================================================================
+export const decidePlay = (state: GameState, playerId: number): { action: 'play' | 'pass', cards: Card[] } => {
+    const player = state.players[playerId];
+    const cards = [...player.cards].sort((a, b) => a.weight - b.weight);
+
+    // --- 情况 1：首发出牌（lastHand 为空或 passCount >= 2 意味着上圈没人接，回到首发） ---
+    const isFreeToPlay = !state.lastHand || state.passCount >= 2;
+    if (isFreeToPlay) {
+        // 只剩 1 张直接出
+        if (cards.length === 1) return { action: 'play', cards: [...cards] };
         
-        // 兜底出最小的单张
+        // 优先尝试出顺子（速度快，消耗多）
+        const straight = findStraight(cards);
+        if (straight && straight.length >= 5) return { action: 'play', cards: straight };
+        
+        // 其次出最小对子
+        const pairs = findSets(cards, 2);
+        if (pairs.length > 0 && pairs[0][0].weight < 14) return { action: 'play', cards: pairs[0] };
+        
+        // 兜底：出最小单张
         return { action: 'play', cards: [cards[0]] };
     }
 
-    const last = state.lastHand.handDetail;
-    const isTeammate = state.landlordIndex !== null && 
-        (state.landlordIndex === state.lastHand.playerIndex) === (state.landlordIndex === playerId);
+    // --- 情况 2：跟牌 ---
+    const last = state.lastHand!.handDetail;
+    const isLandlord = state.landlordIndex === playerId;
     
-    // 如果队友打的牌很大，就不接了
-    if (isTeammate && last.mainWeight >= 13 && last.type !== HandType.Bomb) {
-        return { action: 'pass' };
+    // 队友出的牌很大，让他走（识别先出方和自己的地主关系）
+    const lastPlayerIsLandlord = state.landlordIndex === state.lastHand!.playerIndex;
+    const isBothSameCamp = isLandlord === lastPlayerIsLandlord;
+    if (isBothSameCamp && last.mainWeight >= 13 && last.type !== HandType.Bomb && last.type !== HandType.Rocket) {
+        return { action: 'pass', cards: [] };
     }
 
-    // 2. 接别人的牌
-    // 找出和别人一样牌型且更大的组合。
-    // 这里为了简化：只处理单张、对子、三张、炸弹的“完美匹配”。
-    // 凡是带翅膀、顺子这类复杂逻辑，AI在算力受限下暂时跳过（选 Pass）。
-    
-    if (last.type === HandType.Single) {
-        const candidate = cards.find(c => c.weight > last.mainWeight);
-        if (candidate) return { action: 'play', cards: [candidate] };
-    }
-    
-    if (last.type === HandType.Pair) {
-        const pairs = findSets(cards, 2);
-        const match = pairs.find(p => p[0].weight > last.mainWeight);
-        if (match) return { action: 'play', cards: match };
-    }
-    
-    if (last.type === HandType.Triple) {
-        const triples = findSets(cards, 3);
-        const match = triples.find(p => p[0].weight > last.mainWeight);
-        if (match) return { action: 'play', cards: match };
-    }
-    
-    if (last.type === HandType.Bomb) {
-        const bombs = findSets(cards, 4);
-        const match = bombs.find(p => p[0].weight > last.mainWeight);
-        if (match) return { action: 'play', cards: match };
-    }
-
-    // 拼炸弹救场（如果快输了或者自己是地主且必须拦截）
-    // 简化逻辑：如果是地主，别人快赢了，丢炸弹。
-    if (!isTeammate) {
-        const bombs = findSets(cards, 4);
-        if (bombs.length > 0 && last.type !== HandType.Bomb) {
-            // 如果对方剩牌小于5张，砸
-            const enemyRemaining = state.players[state.lastHand.playerIndex].cards.length;
-            if (enemyRemaining <= 5) {
-                return { action: 'play', cards: bombs[0] };
-            }
+    // 根据上一手的类型，找出最小能压的牌
+    switch (last.type) {
+        case HandType.Single: {
+            // 尽量用小牌压，优先不拆对子
+            const singles = cards.filter(c => c.weight > last.mainWeight);
+            // 先找孤张（不成对的）
+            const groups: Record<number, number> = {};
+            cards.forEach(c => { groups[c.weight] = (groups[c.weight] || 0) + 1; });
+            const loner = singles.find(c => groups[c.weight] === 1);
+            if (loner) return { action: 'play', cards: [loner] };
+            if (singles.length > 0) return { action: 'play', cards: [singles[0]] };
+            break;
         }
-        
-        // 有王炸吗？
-        const wangs = cards.filter(c => c.weight >= 16);
-        if (wangs.length === 2 && last.type !== HandType.Rocket) {
-            const enemyRemaining = state.players[state.lastHand.playerIndex].cards.length;
-            if (enemyRemaining <= 2) { // 迫不得已再出
-                return { action: 'play', cards: wangs };
+        case HandType.Pair: {
+            const pairs = findSets(cards, 2);
+            const match = pairs.find(p => p[0].weight > last.mainWeight);
+            if (match) return { action: 'play', cards: match };
+            break;
+        }
+        case HandType.Triple: {
+            const triples = findSets(cards, 3);
+            const match = triples.find(p => p[0].weight > last.mainWeight);
+            if (match) return { action: 'play', cards: match };
+            break;
+        }
+        case HandType.TripleWithOne: {
+            const triples = findSets(cards, 3);
+            const match = triples.find(p => p[0].weight > last.mainWeight);
+            if (match) {
+                const rest = cards.filter(c => c.weight !== match[0].weight);
+                if (rest.length > 0) return { action: 'play', cards: [...match, rest[0]] };
             }
+            break;
+        }
+        case HandType.Bomb: {
+            const bombs = findSets(cards, 4);
+            const match = bombs.find(p => p[0].weight > last.mainWeight);
+            if (match) return { action: 'play', cards: match };
+            break;
+        }
+        default:
+            break;
+    }
+
+    // 任意类型被炸弹/王炸压制的紧急救场
+    if (last.type !== HandType.Rocket) {
+        // 形势危急时（对手快打完了）才出炸弹
+        const enemyRemaining = state.players[state.lastHand!.playerIndex].cards.length;
+        if (enemyRemaining <= 4 && !isBothSameCamp) {
+            const bombs = findSets(cards, 4);
+            if (bombs.length > 0) return { action: 'play', cards: bombs[0] };
+            const wangs = cards.filter(c => c.weight >= 16);
+            if (wangs.length === 2) return { action: 'play', cards: wangs };
         }
     }
 
-    return { action: 'pass' };
+    return { action: 'pass', cards: [] };
 };

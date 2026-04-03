@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Play, Hash, RefreshCcw } from 'lucide-react';
+import { Users, Plus, Play, Hash, RefreshCcw, History, Search } from 'lucide-react';
 
 interface LobbyProps {
   onJoinRoom: (roomId: string) => void;
@@ -8,6 +8,7 @@ interface LobbyProps {
 
 const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
   const [roomIdInput, setRoomIdInput] = useState('');
+  const [replayIdInput, setReplayIdInput] = useState('');
   const [activeRooms, setActiveRooms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +35,12 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
     if (id.trim()) {
       onJoinRoom(id.trim().toUpperCase());
     }
+  };
+
+  const handleReplay = async (id: string) => {
+    if (!id.trim()) return;
+    const url = `https://dou-dizhu-backend.buleegasy-6c8.workers.dev/api/room/${id.trim().toUpperCase()}/replay`;
+    window.open(url, '_blank'); // 暂时直接打开 JSON，后续可以做 UI
   };
 
   return (
@@ -79,6 +86,32 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
               className="px-6 py-3.5 bg-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-200 hover:bg-purple-700 disabled:opacity-50 active:scale-95 transition-all"
             >
               加入
+            </button>
+          </div>
+        </div>
+
+        {/* 回放查询 */}
+        <div className="mb-10 p-4 bg-gray-50 rounded-3xl border border-gray-100">
+          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1 flex items-center">
+              <History size={12} className="mr-1" />
+              查询对局回放 (Beta)
+          </label>
+          <div className="flex space-x-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={16} />
+              <input 
+                type="text" 
+                placeholder="输入历史房间 ID"
+                value={replayIdInput}
+                onChange={(e) => setReplayIdInput(e.target.value)}
+                className="w-full pl-11 pr-4 py-2.5 bg-white border-transparent rounded-xl focus:ring-2 focus:ring-purple-200 transition-all text-xs font-bold text-gray-600 placeholder:text-gray-200 uppercase"
+              />
+            </div>
+            <button 
+              onClick={() => handleReplay(replayIdInput)}
+              className="px-4 py-2.5 bg-white text-purple-600 border border-gray-100 rounded-xl font-bold shadow-sm hover:bg-purple-50 transition-all text-xs"
+            >
+              回放
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, Info, Users, CheckCircle2, AlertCircle, Bot, UserPlus } from 'lucide-react';
+import { ChevronLeft, Info, Users, CheckCircle2, AlertCircle, Bot, UserPlus, Clock } from 'lucide-react';
 import type { GameState } from '../logic/gameController';
 import { 
   initGameState, 
@@ -21,6 +21,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   const [playerId, setPlayerId] = useState<number | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(25);
   
   const syncRef = useRef<GameSync | null>(null);
 
@@ -39,6 +40,18 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
       syncRef.current?.disconnect();
     };
   }, [roomId]);
+
+  // 倒计时逻辑
+  useEffect(() => {
+    const timer = setInterval(() => {
+        if (state.lastActionTimestamp) {
+            const elapsed = Math.floor((Date.now() - state.lastActionTimestamp) / 1000);
+            const remaining = Math.max(0, 25 - elapsed);
+            setTimeLeft(remaining);
+        }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [state.lastActionTimestamp]);
 
   // 实时分析当前选中的牌
   const selectedHandDetail = useMemo(() => {
@@ -103,6 +116,43 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   const currentPlayer = playerId !== null ? state.players[playerId] : state.players[0];
   const isMyTurn = playerId !== null && state.turnIndex === playerId;
 
+  // 辅助渲染：头像与倒计时
+  const renderPlayerAvatar = (pIndex: number, label: string, isLeft: boolean = false) => {
+      const p = state.players[pIndex];
+      const isTurn = state.turnIndex === pIndex;
+      const isBiddingOrPlaying = state.stage === GameStage.Bidding || state.stage === GameStage.Playing;
+      
+      return (
+        <div className={`p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4 ${!isLeft ? 'justify-end' : ''}`}>
+          <div className="relative">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${p?.isAi ? 'bg-purple-100 text-purple-600' : 'bg-gray-50 text-gray-400'} ${isTurn && isBiddingOrPlaying ? 'ring-4 ring-purple-400 scale-110 shadow-lg' : ''}`}>
+                {p?.isAi ? <Bot size={24} /> : <Users size={20} />}
+              </div>
+              {isTurn && isBiddingOrPlaying && (
+                  <div className="absolute -top-1 -right-1 w-6 h-6 bg-purple-600 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md">
+                      {timeLeft}
+                  </div>
+              )}
+          </div>
+          <div className={`flex-1 flex justify-between items-center ${!isLeft ? 'flex-row-reverse text-right' : ''}`}>
+              <div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight flex items-center">
+                    {p?.isAi ? `🤖 AI 托管 (${label})` : `玩家 ${pIndex + 1} (${label})`}
+                </div>
+                <div className="text-xl font-black text-gray-900">
+                    {p?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
+                </div>
+              </div>
+              {!p?.isAi && state.stage === GameStage.Idle && (
+                  <button onClick={() => handleAddAi(pIndex)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-xl transition-colors">
+                      <UserPlus size={18} />
+                  </button>
+              )}
+          </div>
+        </div>
+      );
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-gray-50 p-4 md:p-8">
       {/* 头部状态栏 */}
@@ -144,27 +194,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
       {/* 对手数据面板 */}
       <div className="grid grid-cols-3 gap-4 mb-12">
-        {/* 左侧玩家 */}
-        <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${state.players[(playerId! + 1) % 3]?.isAi ? 'bg-purple-100 text-purple-600' : 'bg-gray-50 text-gray-400'}`}>
-            {state.players[(playerId! + 1) % 3]?.isAi ? <Bot size={24} /> : <Users size={20} />}
-          </div>
-          <div className="flex-1 flex justify-between items-center">
-              <div>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight flex items-center">
-                    {state.players[(playerId! + 1) % 3]?.isAi ? '🤖 AI 托管 (左)' : `玩家 ${(playerId! + 1) % 3 + 1} (左)`}
-                </div>
-                <div className="text-xl font-black text-gray-900">
-                    {state.players[(playerId! + 1) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
-                </div>
-              </div>
-              {!state.players[(playerId! + 1) % 3]?.isAi && state.stage === GameStage.Idle && (
-                  <button onClick={() => handleAddAi((playerId! + 1) % 3)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-xl transition-colors">
-                      <UserPlus size={18} />
-                  </button>
-              )}
-          </div>
-        </div>
+        {playerId !== null && renderPlayerAvatar((playerId + 1) % 3, '左', true)}
 
         <div className="flex justify-center items-center space-x-1">
             <AnimatePresence mode="popLayout">
@@ -174,27 +204,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
             </AnimatePresence>
         </div>
 
-        {/* 右侧玩家 */}
-        <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4 justify-end">
-          <div className="flex-1 flex justify-between items-center text-right flex-row-reverse">
-              <div>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight flex items-center justify-end">
-                    {state.players[(playerId! + 2) % 3]?.isAi ? '🤖 AI 托管 (右)' : `玩家 ${(playerId! + 2) % 3 + 1} (右)`}
-                </div>
-                <div className="text-xl font-black text-gray-900">
-                    {state.players[(playerId! + 2) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
-                </div>
-              </div>
-              {!state.players[(playerId! + 2) % 3]?.isAi && state.stage === GameStage.Idle && (
-                  <button onClick={() => handleAddAi((playerId! + 2) % 3)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-xl transition-colors">
-                      <UserPlus size={18} />
-                  </button>
-              )}
-          </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${state.players[(playerId! + 2) % 3]?.isAi ? 'bg-purple-100 text-purple-600' : 'bg-gray-50 text-gray-400'}`}>
-            {state.players[(playerId! + 2) % 3]?.isAi ? <Bot size={24} /> : <Users size={20} />}
-          </div>
-        </div>
+        {playerId !== null && renderPlayerAvatar((playerId + 2) % 3, '右', false)}
       </div>
 
       {/* 出牌区域 */}
@@ -225,20 +235,29 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
       {/* 控制操作台 */}
       <div className="flex flex-col items-center mb-6">
-        {/* 实时反馈提示 */}
-        <AnimatePresence mode="wait">
-            {selectedIndices.length > 0 && isMyTurn && (
-                <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-2xl mb-4 text-xs font-bold uppercase tracking-wide border ${playabilityStatus.canPlay ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-500 border-red-100'}`}
-                >
-                    {playabilityStatus.canPlay ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                    <span>{playabilityStatus.canPlay ? `${playabilityStatus.type}` : `${playabilityStatus.reason}`}</span>
-                </motion.div>
+        {/* 实时反馈提示与倒计时 */}
+        <div className="flex flex-col items-center space-y-2 mb-4">
+            <AnimatePresence mode="wait">
+                {selectedIndices.length > 0 && isMyTurn && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-wide border ${playabilityStatus.canPlay ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-500 border-red-100'}`}
+                    >
+                        {playabilityStatus.canPlay ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                        <span>{playabilityStatus.canPlay ? `${playabilityStatus.type}` : `${playabilityStatus.reason}`}</span>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            
+            {isMyTurn && (state.stage === GameStage.Bidding || state.stage === GameStage.Playing) && (
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-black italic tracking-tighter ${timeLeft <= 5 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-400'}`}>
+                    <Clock size={12} />
+                    <span>00:{timeLeft.toString().padStart(2, '0')}</span>
+                </div>
             )}
-        </AnimatePresence>
+        </div>
 
         <div className="flex justify-center space-x-3 w-full">
             {state.stage === GameStage.Bidding && state.turnIndex === playerId && (
