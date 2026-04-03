@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Users, UserCheck, ArrowLeft, ChevronRight, Zap } from 'lucide-react';
+import { Bot, Users, UserCheck, ArrowLeft } from 'lucide-react';
 
 export type GameMode = '1v2ai' | '2v1ai' | '3human';
 
@@ -46,6 +46,11 @@ const modes = [
 const ModeSelect: React.FC<ModeSelectProps> = ({ roomId, onConfirm, onBack }) => {
   const [selected, setSelected] = useState<GameMode>('1v2ai');
 
+  const handleChooseMode = (mode: GameMode) => {
+    setSelected(mode);
+    onConfirm(mode);
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 p-6">
       <motion.div
@@ -78,7 +83,8 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ roomId, onConfirm, onBack }) =>
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08 }}
-                onClick={() => setSelected(mode.id)}
+                whileTap={{ scale: 0.985 }}
+                onClick={() => handleChooseMode(mode.id)}
                 className={`w-full text-left p-5 rounded-3xl border-2 transition-all duration-200 flex items-start space-x-4 ${
                   selected === mode.id
                     ? 'bg-white border-purple-400 shadow-lg shadow-purple-100'
@@ -115,16 +121,9 @@ const ModeSelect: React.FC<ModeSelectProps> = ({ roomId, onConfirm, onBack }) =>
           </AnimatePresence>
         </div>
 
-        {/* Confirm button */}
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={() => onConfirm(selected)}
-          className="w-full py-4 bg-purple-600 text-white rounded-3xl font-black text-base shadow-xl shadow-purple-200 hover:bg-purple-700 transition-all flex items-center justify-center space-x-2"
-        >
-          <Zap size={18} className="fill-white" />
-          <span>进入房间 · 开始游戏</span>
-          <ChevronRight size={18} />
-        </motion.button>
+        <div className="text-center text-xs font-semibold text-gray-400">
+          点击任一模式卡片后将直接进入房间并自动开局
+        </div>
       </motion.div>
     </div>
   );

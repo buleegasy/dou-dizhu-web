@@ -21,3 +21,56 @@ body {
 .card-transition {
   transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
+.card-status-ping {
+  animation: cardStatusPing 1.15s ease-in-out infinite;
+}
+
+.play-card-glow {
+  box-shadow: 0 14px 32px rgba(148, 163, 184, 0.2);
+}
+
+.hand-stage-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.hand-stage-sheen::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -28%;
+  width: 32%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  transform: skewX(-18deg);
+  animation: stageSheen 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes cardStatusPing {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@keyframes stageSheen {
+  0%, 18% {
+    transform: translateX(0) skewX(-18deg);
+    opacity: 0;
+  }
+  32% {
+    opacity: 1;
+  }
+  55% {
+    transform: translateX(420%) skewX(-18deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(420%) skewX(-18deg);
+    opacity: 0;
+  }
+}

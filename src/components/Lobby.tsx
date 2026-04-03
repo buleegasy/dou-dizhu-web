@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Play, Hash, RefreshCcw, History, Search } from 'lucide-react';
+import { Users, Plus, Play, Hash, RefreshCcw, History, Search, ArrowRight } from 'lucide-react';
 
 interface LobbyProps {
   onJoinRoom: (roomId: string) => void;
@@ -43,6 +43,8 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
     window.open(url, '_blank'); // 暂时直接打开 JSON，后续可以做 UI
   };
 
+  const createRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 p-6">
       <motion.div 
@@ -65,9 +67,40 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
           </button>
         </div>
 
+        <motion.button
+          whileHover={{ y: -2, scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={() => handleJoin(createRoomId())}
+          className="group mb-8 w-full overflow-hidden rounded-[28px] bg-gradient-to-br from-purple-600 via-purple-500 to-fuchsia-500 p-6 text-left text-white shadow-xl shadow-purple-200"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-3 inline-flex items-center rounded-full bg-white/16 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/90">
+                最常用操作
+              </div>
+              <div className="text-3xl font-black tracking-tight">新建房间</div>
+              <div className="mt-2 max-w-xs text-sm font-medium text-white/85">
+                一键创建新房间，下一步直接选择模式并自动开局。
+              </div>
+            </div>
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/14 text-white transition-transform duration-200 group-hover:translate-x-1">
+              <Plus size={26} />
+            </div>
+          </div>
+          <div className="mt-5 flex items-center justify-between">
+            <div className="rounded-full bg-white/14 px-3 py-1.5 text-xs font-bold text-white/90">
+              推荐从这里开始
+            </div>
+            <div className="flex items-center gap-1 text-sm font-black">
+              立即创建
+              <ArrowRight size={16} />
+            </div>
+          </div>
+        </motion.button>
+
         {/* 手动输入房间号 */}
         <div className="mb-10">
-          <label className="block text-sm font-medium text-gray-400 mb-3 ml-1">加入指定房间</label>
+          <label className="block text-sm font-medium text-gray-400 mb-3 ml-1">已有房间？输入房间号加入</label>
           <div className="flex space-x-2">
             <div className="relative flex-1">
               <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
@@ -123,13 +156,9 @@ const Lobby: React.FC<LobbyProps> = ({ onJoinRoom }) => {
               <Users size={16} className="mr-2 text-purple-500" />
               活跃房间 ({activeRooms.length})
             </h2>
-            <button 
-              onClick={() => handleJoin(Math.random().toString(36).substring(2, 8).toUpperCase())}
-              className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center"
-            >
-              <Plus size={14} className="mr-1" />
-              创建新房间
-            </button>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+              快速加入
+            </div>
           </div>
 
           <div className="grid gap-3 max-h-64 overflow-y-auto pr-1">

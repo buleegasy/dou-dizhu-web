@@ -75,7 +75,7 @@ function App() {
             transition={{ duration: 0.28, ease: 'circOut' }}
             className="flex-1 flex flex-col"
           >
-            <GameTable onExit={handleLeave} roomId={currentRoomId} aiCount={aiCount} />
+            <GameTable onExit={handleLeave} roomId={currentRoomId} aiCount={aiCount} autoStart />
           </motion.div>
         )}
       </AnimatePresence>
