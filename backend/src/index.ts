@@ -1,4 +1,5 @@
 import { GameState, initGameState, dealCards, setLandlord, playCards, passTurn } from './logic/gameController.js';
+import { decidePlay, decideBid } from './logic/aiController.js';
 
 export interface Env {
   ROOM_REGISTRY: DurableObjectNamespace;
@@ -127,6 +128,12 @@ export class GameRoom {
       case 'deal':
         newState = dealCards(this.gameState);
         break;
+      case 'add_ai':
+        const seat = action.index;
+        const newPlayers = [...this.gameState.players];
+        newPlayers[seat] = { ...newPlayers[seat], isAi: true };
+        newState = { ...this.gameState, players: newPlayers };
+        break;
       case 'landlord':
         newState = setLandlord(this.gameState, action.index);
         break;
@@ -143,6 +150,64 @@ export class GameRoom {
     this.gameState = newState;
     await this.state.storage.put('gameState', this.gameState);
     this.broadcastState();
+
+    // 检查是否轮到 AI 出牌
+    this.checkAndTriggerAI();
+  }
+
+  checkAndTriggerAI() {
+    const state = this.gameState;
+    
+    const currentPlayer = state.players[state.turnIndex];
+    if (!currentPlayer || !currentPlayer.isAi) return;
+
+    // 如果是叫地主阶段
+    if (state.stage === 'Bidding') {
+        setTimeout(async () => {
+             if (this.gameState.turnIndex !== currentPlayer.id || this.gameState.stage !== 'Bidding') return;
+             
+             const wantBid = decideBid(currentPlayer.cards);
+             if (wantBid) {
+                 this.gameState = setLandlord(this.gameState, currentPlayer.id);
+             } else {
+                 this.gameState.turnIndex = (this.gameState.turnIndex + 1) % 3;
+                 // 如果一圈都没人叫，为了防止死循环，这里可以简单地强制最后一个人当或者重新发牌。
+                 // 作为简化体验，AI 不叫也会移交给下家。如果下家还是 AI 会继续流转。
+             }
+             
+             await this.state.storage.put('gameState', this.gameState);
+             this.broadcastState();
+             this.checkAndTriggerAI();
+        }, 1500);
+        return;
+    }
+
+    // 只有在 Playing 状态才处理出牌
+    if (state.stage !== 'Playing') return;
+
+    // 使用 setTimeout 模拟思考延迟
+    setTimeout(async () => {
+             // 再次确保状态没变
+             if (this.gameState.turnIndex !== currentPlayer.id || this.gameState.stage !== 'Playing') return;
+             
+             const decision = decidePlay(this.gameState, currentPlayer.id);
+             let afterAiState = this.gameState;
+
+             if (decision.action === 'play' && decision.cards) {
+                const aiResult = playCards(this.gameState, currentPlayer.id, decision.cards);
+                if (!aiResult.error) afterAiState = aiResult.state;
+             } else {
+                const aiPassResult = passTurn(this.gameState, currentPlayer.id);
+                if (!aiPassResult.error) afterAiState = aiPassResult.state;
+             }
+             
+             this.gameState = afterAiState;
+             await this.state.storage.put('gameState', this.gameState);
+             this.broadcastState();
+             
+             // 递归检查下一个是否还是 AI
+             this.checkAndTriggerAI();
+        }, 2000); // 2 秒人工智能延迟
   }
 
   broadcastState() {

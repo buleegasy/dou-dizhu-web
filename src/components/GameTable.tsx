@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, Info, Users, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Info, Users, CheckCircle2, AlertCircle, Bot, UserPlus } from 'lucide-react';
 import type { GameState } from '../logic/gameController';
 import { 
   initGameState, 
@@ -96,6 +96,10 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
     setError(null);
   };
 
+  const handleAddAi = (seatIndex: number) => {
+    syncRef.current?.sendAction({ type: 'add_ai', index: seatIndex });
+  };
+
   const currentPlayer = playerId !== null ? state.players[playerId] : state.players[0];
   const isMyTurn = playerId !== null && state.turnIndex === playerId;
 
@@ -140,17 +144,25 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
 
       {/* 对手数据面板 */}
       <div className="grid grid-cols-3 gap-4 mb-12">
+        {/* 左侧玩家 */}
         <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4">
-          <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300">
-            <Users size={20} />
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${state.players[(playerId! + 1) % 3]?.isAi ? 'bg-purple-100 text-purple-600' : 'bg-gray-50 text-gray-400'}`}>
+            {state.players[(playerId! + 1) % 3]?.isAi ? <Bot size={24} /> : <Users size={20} />}
           </div>
-          <div>
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
-                玩家 {(playerId! + 1) % 3 + 1} (左)
-            </div>
-            <div className="text-xl font-black text-gray-900">
-                {state.players[(playerId! + 1) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
-            </div>
+          <div className="flex-1 flex justify-between items-center">
+              <div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight flex items-center">
+                    {state.players[(playerId! + 1) % 3]?.isAi ? '🤖 AI 托管 (左)' : `玩家 ${(playerId! + 1) % 3 + 1} (左)`}
+                </div>
+                <div className="text-xl font-black text-gray-900">
+                    {state.players[(playerId! + 1) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
+                </div>
+              </div>
+              {!state.players[(playerId! + 1) % 3]?.isAi && state.stage === GameStage.Idle && (
+                  <button onClick={() => handleAddAi((playerId! + 1) % 3)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-xl transition-colors">
+                      <UserPlus size={18} />
+                  </button>
+              )}
           </div>
         </div>
 
@@ -162,17 +174,25 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
             </AnimatePresence>
         </div>
 
+        {/* 右侧玩家 */}
         <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-sm flex items-center space-x-4 justify-end">
-          <div className="text-right">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
-                玩家 {(playerId! + 2) % 3 + 1} (右)
-            </div>
-            <div className="text-xl font-black text-gray-900">
-                {state.players[(playerId! + 2) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
-            </div>
+          <div className="flex-1 flex justify-between items-center text-right flex-row-reverse">
+              <div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight flex items-center justify-end">
+                    {state.players[(playerId! + 2) % 3]?.isAi ? '🤖 AI 托管 (右)' : `玩家 ${(playerId! + 2) % 3 + 1} (右)`}
+                </div>
+                <div className="text-xl font-black text-gray-900">
+                    {state.players[(playerId! + 2) % 3]?.cards.length || 0} <span className="text-xs font-medium text-gray-400">Cards</span>
+                </div>
+              </div>
+              {!state.players[(playerId! + 2) % 3]?.isAi && state.stage === GameStage.Idle && (
+                  <button onClick={() => handleAddAi((playerId! + 2) % 3)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-xl transition-colors">
+                      <UserPlus size={18} />
+                  </button>
+              )}
           </div>
-          <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300">
-            <Users size={20} />
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${state.players[(playerId! + 2) % 3]?.isAi ? 'bg-purple-100 text-purple-600' : 'bg-gray-50 text-gray-400'}`}>
+            {state.players[(playerId! + 2) % 3]?.isAi ? <Bot size={24} /> : <Users size={20} />}
           </div>
         </div>
       </div>

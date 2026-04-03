@@ -16,6 +16,7 @@ export interface Player {
   cards: Card[];
   isLandlord: boolean;
   score: number;
+  isAi?: boolean;
 }
 
 export interface GameState {
@@ -30,6 +31,7 @@ export interface GameState {
     playerIndex: number;
   } | null;
   passCount: number;
+  bidAttempts?: Record<number, boolean>;
 }
 
 export const initGameState = (): GameState => {
@@ -41,6 +43,7 @@ export const initGameState = (): GameState => {
     landlordIndex: null,
     lastHand: null,
     passCount: 0,
+    bidAttempts: {},
   };
 };
 
@@ -64,6 +67,7 @@ export const dealCards = (state: GameState): GameState => {
     players: newPlayers,
     bottomCards,
     turnIndex: 0,
+    bidAttempts: {},
   };
 };
 
