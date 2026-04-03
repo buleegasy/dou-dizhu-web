@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Info, Users } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ChevronLeft, Info, Users, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { GameState } from '../logic/gameController';
 import { 
   initGameState, 
   GameStage
 } from '../logic/gameController';
+import { analyzeHand, compareHands, HandType } from '../logic/patternMatcher';
 import { GameSync } from '../logic/gameSync';
 import Hand from './Hand';
 import Card from './Card';
@@ -24,7 +25,6 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   const syncRef = useRef<GameSync | null>(null);
 
   useEffect(() => {
-    // 初始化同步器
     syncRef.current = new GameSync(
       (newState, pId) => {
         setState(newState);
@@ -40,6 +40,34 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
     };
   }, [roomId]);
 
+  // 实时分析当前选中的牌
+  const selectedHandDetail = useMemo(() => {
+    if (playerId === null) return null;
+    const player = state.players[playerId];
+    const selectedCards = selectedIndices.map(i => player.cards[i]);
+    if (selectedCards.length === 0) return null;
+    return analyzeHand(selectedCards);
+  }, [selectedIndices, state.players, playerId]);
+
+  // 校验当前选择是否可以出牌
+  const playabilityStatus = useMemo(() => {
+    if (!selectedHandDetail || playerId === null) return { canPlay: false, reason: '请选择扑克牌' };
+    if (state.turnIndex !== playerId) return { canPlay: false, reason: '还没轮到你' };
+
+    // 如果选中的牌型无效
+    if (selectedHandDetail.type === HandType.None) {
+      return { canPlay: false, reason: '无效牌型' };
+    }
+
+    // 如果不是首行出牌（即有上手牌需要压制）
+    if (state.lastHand && state.passCount < 2) {
+      const canBeat = compareHands(state.lastHand.handDetail, selectedHandDetail);
+      if (!canBeat) return { canPlay: false, reason: '牌太小或类型不配' };
+    }
+
+    return { canPlay: true, reason: '合法出牌', type: selectedHandDetail.type };
+  }, [selectedHandDetail, state.lastHand, state.passCount, state.turnIndex, playerId]);
+
   const handleStart = () => {
     syncRef.current?.sendAction({ type: 'deal' });
     setError(null);
@@ -50,7 +78,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   };
 
   const handlePlay = () => {
-    if (playerId === null || state.turnIndex !== playerId) return;
+    if (!playabilityStatus.canPlay || playerId === null) return;
 
     const player = state.players[playerId];
     const selectedCards = selectedIndices.map(i => player.cards[i]);
@@ -131,11 +159,6 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
                 {state.bottomCards.map(c => (
                     <Card key={c.id} card={c} isSmall className="!w-10 !h-14 !shadow-none" />
                 ))}
-                {state.bottomCards.length === 0 && (
-                    <div className="flex space-x-1 opacity-20">
-                        {[1, 2, 3].map(i => <div key={i} className="w-10 h-14 bg-gray-200 rounded-lg border border-gray-300 border-dashed" />)}
-                    </div>
-                )}
             </AnimatePresence>
         </div>
 
@@ -181,33 +204,50 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
       </div>
 
       {/* 控制操作台 */}
-      <div className="flex justify-center space-x-3 mb-6">
-        {state.stage === GameStage.Bidding && state.turnIndex === playerId && (
-            <button 
-                onClick={handleGrabLandlord}
-                className="px-10 py-3.5 bg-yellow-400 text-white rounded-2xl font-black shadow-lg shadow-yellow-100 hover:bg-yellow-500 hover:shadow-yellow-200 transition-all uppercase tracking-tight text-sm"
-            >
-                叫地主
-            </button>
-        )}
-        {state.stage === GameStage.Playing && isMyTurn && (
-            <>
-                <button 
-                    onClick={handlePass}
-                    disabled={!state.lastHand || state.passCount >= 2}
-                    className="px-10 py-3.5 bg-white border border-gray-100 text-gray-400 rounded-2xl font-bold shadow-sm hover:bg-gray-50 disabled:opacity-30 transition-all uppercase tracking-tight text-sm"
+      <div className="flex flex-col items-center mb-6">
+        {/* 实时反馈提示 */}
+        <AnimatePresence mode="wait">
+            {selectedIndices.length > 0 && isMyTurn && (
+                <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-2xl mb-4 text-xs font-bold uppercase tracking-wide border ${playabilityStatus.canPlay ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-500 border-red-100'}`}
                 >
-                    不出
-                </button>
+                    {playabilityStatus.canPlay ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    <span>{playabilityStatus.canPlay ? `${playabilityStatus.type}` : `${playabilityStatus.reason}`}</span>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        <div className="flex justify-center space-x-3 w-full">
+            {state.stage === GameStage.Bidding && state.turnIndex === playerId && (
                 <button 
-                    onClick={handlePlay}
-                    disabled={selectedIndices.length === 0}
-                    className="px-12 py-3.5 bg-purple-600 text-white rounded-2xl font-black shadow-lg shadow-purple-200 hover:bg-purple-700 hover:shadow-purple-300 disabled:opacity-50 transition-all uppercase tracking-tight text-sm"
+                    onClick={handleGrabLandlord}
+                    className="px-10 py-3.5 bg-yellow-400 text-white rounded-2xl font-black shadow-lg shadow-yellow-100 hover:bg-yellow-500 hover:shadow-yellow-200 transition-all uppercase tracking-tight text-sm"
                 >
-                    出牌
+                    叫地主
                 </button>
-            </>
-        )}
+            )}
+            {state.stage === GameStage.Playing && isMyTurn && (
+                <>
+                    <button 
+                        onClick={handlePass}
+                        disabled={!state.lastHand || state.passCount >= 2}
+                        className="px-10 py-3.5 bg-white border border-gray-100 text-gray-400 rounded-2xl font-bold shadow-sm hover:bg-gray-50 disabled:opacity-30 transition-all uppercase tracking-tight text-sm"
+                    >
+                        不出
+                    </button>
+                    <button 
+                        onClick={handlePlay}
+                        disabled={!playabilityStatus.canPlay}
+                        className={`px-12 py-3.5 rounded-2xl font-black shadow-lg transition-all uppercase tracking-tight text-sm ${playabilityStatus.canPlay ? 'bg-purple-600 text-white shadow-purple-200 hover:bg-purple-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'}`}
+                    >
+                        出牌
+                    </button>
+                </>
+            )}
+        </div>
       </div>
 
       {/* 底部玩家手牌 */}
@@ -220,6 +260,7 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
                     prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                 );
             }}
+            isValidSelection={playabilityStatus.canPlay}
         />
       </div>
     </div>

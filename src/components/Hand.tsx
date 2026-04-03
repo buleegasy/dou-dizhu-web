@@ -7,11 +7,12 @@ interface HandProps {
   selectedIndices?: number[];
   onToggleCard?: (index: number) => void;
   isSmall?: boolean;
+  isValidSelection?: boolean;
 }
 
 import { AnimatePresence } from 'framer-motion';
 
-const Hand: React.FC<HandProps> = ({ cards, selectedIndices = [], onToggleCard, isSmall }) => {
+const Hand: React.FC<HandProps> = ({ cards, selectedIndices = [], onToggleCard, isSmall, isValidSelection }) => {
   return (
     <div className="flex flex-row justify-center items-end -space-x-8 md:-space-x-12 px-4 py-8">
       <AnimatePresence>
@@ -22,6 +23,7 @@ const Hand: React.FC<HandProps> = ({ cards, selectedIndices = [], onToggleCard, 
               key={card.id}
               card={card}
               isSelected={isSelected}
+              isValidSelection={isSelected ? isValidSelection : undefined}
               onClick={() => onToggleCard && onToggleCard(index)}
               isSmall={isSmall}
               className="hover:z-10 transition-transform"

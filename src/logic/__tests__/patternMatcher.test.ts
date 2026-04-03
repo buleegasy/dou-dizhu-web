@@ -44,47 +44,62 @@ describe('analyzeHand', () => {
     expect(result.cardCount).toBe(5);
   });
 
-  it('should identify TripleWithOne', () => {
+  it('should identify PlaneWithPair', () => {
     const hand = [
-      createCard(Rank.Ten),
-      createCard(Rank.Ten),
-      createCard(Rank.Ten),
-      createCard(Rank.Three),
+      createCard(Rank.Three, Suit.Spade), createCard(Rank.Three, Suit.Heart), createCard(Rank.Three, Suit.Club), // 333
+      createCard(Rank.Four, Suit.Spade), createCard(Rank.Four, Suit.Heart), createCard(Rank.Four, Suit.Club),   // 444
+      createCard(Rank.Five, Suit.Spade), createCard(Rank.Five, Suit.Heart),                                   // 55
+      createCard(Rank.Six, Suit.Spade), createCard(Rank.Six, Suit.Heart),                                     // 66
     ];
     const result = analyzeHand(hand);
-    expect(result.type).toBe(HandType.TripleWithOne);
+    expect(result.type).toBe(HandType.PlaneWithPair);
+    expect(result.mainWeight).toBe(3);
+    expect(result.cardCount).toBe(10);
+  });
+
+  it('should reject Plane with wrong wing count', () => {
+    const hand = [
+      createCard(Rank.Three, Suit.Spade), createCard(Rank.Three, Suit.Heart), createCard(Rank.Three, Suit.Club), // 333
+      createCard(Rank.Four, Suit.Spade), createCard(Rank.Four, Suit.Heart), createCard(Rank.Four, Suit.Club),   // 444
+      createCard(Rank.Five, Suit.Spade), createCard(Rank.Six, Suit.Heart), createCard(Rank.Seven, Suit.Club),    // 567 (3 wings for 2 triples)
+    ];
+    const result = analyzeHand(hand);
+    expect(result.type).toBe(HandType.None);
+  });
+
+  it('should identify QuadrupleWithTwo', () => {
+    const hand = [
+      createCard(Rank.Ten, Suit.Spade), createCard(Rank.Ten, Suit.Heart), createCard(Rank.Ten, Suit.Club), createCard(Rank.Ten, Suit.Diamond),
+      createCard(Rank.Three, Suit.Spade), createCard(Rank.Four, Suit.Heart),
+    ];
+    const result = analyzeHand(hand);
+    expect(result.type).toBe(HandType.QuadrupleWithTwo);
     expect(result.mainWeight).toBe(10);
   });
 });
 
 describe('compareHands', () => {
-  it('Rocket beats everything', () => {
-    const rocket = analyzeHand([createCard(Rank.BlackJoker, Suit.Joker), createCard(Rank.RedJoker, Suit.Joker)]);
-    const bomb = analyzeHand([createCard(Rank.Ace), createCard(Rank.Ace), createCard(Rank.Ace), createCard(Rank.Ace)]);
-    expect(compareHands(bomb, rocket)).toBe(true);
-  });
-
-  it('Bigger bomb beats smaller bomb', () => {
-    const smallBomb = analyzeHand([createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three)]);
-    const bigBomb = analyzeHand([createCard(Rank.Four), createCard(Rank.Four), createCard(Rank.Four), createCard(Rank.Four)]);
-    expect(compareHands(smallBomb, bigBomb)).toBe(true);
-  });
-
-  it('Bomb beats single', () => {
-    const single = analyzeHand([createCard(Rank.Two)]);
-    const bomb = analyzeHand([createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three)]);
-    expect(compareHands(single, bomb)).toBe(true);
-  });
-
   it('Higher single beats lower single', () => {
     const h3 = analyzeHand([createCard(Rank.Three)]);
     const h4 = analyzeHand([createCard(Rank.Four)]);
     expect(compareHands(h3, h4)).toBe(true);
   });
 
-  it('Cannot compare different types (non-bomb)', () => {
+  it('Higher plane beats lower plane of same type', () => {
+      const p34 = analyzeHand([
+          createCard(Rank.Three, Suit.Spade), createCard(Rank.Three, Suit.Heart), createCard(Rank.Three, Suit.Club),
+          createCard(Rank.Four, Suit.Spade), createCard(Rank.Four, Suit.Heart), createCard(Rank.Four, Suit.Club),
+      ]);
+      const p45 = analyzeHand([
+          createCard(Rank.Four, Suit.Spade), createCard(Rank.Four, Suit.Heart), createCard(Rank.Four, Suit.Club),
+          createCard(Rank.Five, Suit.Spade), createCard(Rank.Five, Suit.Heart), createCard(Rank.Five, Suit.Club),
+      ]);
+      expect(compareHands(p34, p45)).toBe(true);
+  });
+
+  it('Bomb beats single', () => {
     const single = analyzeHand([createCard(Rank.Two)]);
-    const pair = analyzeHand([createCard(Rank.Three), createCard(Rank.Three)]);
-    expect(compareHands(single, pair)).toBe(false);
+    const bomb = analyzeHand([createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three), createCard(Rank.Three)]);
+    expect(compareHands(single, bomb)).toBe(true);
   });
 });

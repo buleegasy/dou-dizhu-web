@@ -1,4 +1,4 @@
-import { GameState } from './gameController';
+import type { GameState } from './gameController';
 
 export type SyncMessage = 
   | { type: 'init'; playerId: number; state: GameState }

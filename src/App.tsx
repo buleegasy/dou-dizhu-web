@@ -7,8 +7,7 @@ import { useState } from 'react'
 function App() {
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   
-  // 模拟活跃房间列表（待接入后端）
-  const [activeRooms] = useState<string[]>(['ROOM-A1', 'LUXURY-88', 'BATTLE-X']);
+  // 模拟活跃房间列表已改为直接从后端获取
 
   const handleJoin = (id: string) => {
     setCurrentRoomId(id);
@@ -30,7 +29,7 @@ function App() {
             transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
             className="flex-1 flex flex-col"
           >
-            <Lobby onJoinRoom={handleJoin} activeRooms={activeRooms} />
+            <Lobby onJoinRoom={handleJoin} />
           </motion.div>
         ) : (
           <motion.div 
