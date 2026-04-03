@@ -14,15 +14,15 @@ import Card from './Card';
 interface GameTableProps {
   roomId: string;
   onExit: () => void;
+  aiCount?: number; // 0=三人联机, 1=二人+1AI, 2=一人+2AI
 }
 
-const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
+const GameTable: React.FC<GameTableProps> = ({ roomId, onExit, aiCount = 0 }) => {
   const [state, setState] = useState<GameState>(initGameState());
   const [playerId, setPlayerId] = useState<number | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(25);
-  const timerStartRef = useRef<number>(Date.now());
   
   const syncRef = useRef<GameSync | null>(null);
 
@@ -42,20 +42,18 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
     };
   }, [roomId]);
 
-  // 倒计时逻辑：回合切换时重置，用本地时钟倒数（不依赖服务器时间戳）
+  // 倒计时修复：使用函数式更新，彺彻消除闭包问题
   useEffect(() => {
-    timerStartRef.current = Date.now();
+    const id = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // 只运行一次
+
+  // 当轮次或阶段变化时重置倒计时
+  useEffect(() => {
     setTimeLeft(25);
   }, [state.turnIndex, state.stage]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - timerStartRef.current) / 1000);
-        const remaining = Math.max(0, 25 - elapsed);
-        setTimeLeft(remaining);
-    }, 500); // 每 500ms 刷新一次，更平滑
-    return () => clearInterval(timer);
-  }, []); // 只挂载一次，依赖 ref 避免闭包陷阱
 
   // 实时分析当前选中的牌
   const selectedHandDetail = useMemo(() => {
@@ -86,6 +84,14 @@ const GameTable: React.FC<GameTableProps> = ({ roomId, onExit }) => {
   }, [selectedHandDetail, state.lastHand, state.passCount, state.turnIndex, playerId]);
 
   const handleStart = () => {
+    // 根据 aiCount 先添加 AI 广播给其他同局的座位
+    if (aiCount > 0) {
+      // 例：玩家是 0号，加 AI 从座位 1、2 开始
+      for (let i = 0; i < aiCount; i++) {
+        const seatToFill = (1 + i) % 3; // seats 1, 2
+        syncRef.current?.sendAction({ type: 'add_ai', index: seatToFill });
+      }
+    }
     syncRef.current?.sendAction({ type: 'deal' });
     setError(null);
   };
