@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: #F9FAFB; /* gray-50 */
+  color: #111827; /* gray-900 */
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 扑克牌翻牌/选中等基础动画 */
+.card-transition {
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
